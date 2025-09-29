@@ -87,7 +87,8 @@
         input[type="text"],
         input[type="password"],
         input[type="date"],
-        input[type="number"] {
+        input[type="number"],
+        select {
             width: 100%;
             padding: 15px;
             border: 2px solid #e1e8ed;
@@ -100,7 +101,8 @@
         input[type="text"]:focus,
         input[type="password"]:focus,
         input[type="date"]:focus,
-        input[type="number"]:focus {
+        input[type="number"]:focus,
+        select:focus {
             outline: none;
             border-color: #20B2AA;
             background-color: white;
@@ -186,12 +188,18 @@
     </header>
 
     <div class="form-container">
-        <h2 class="form-title">Check Rates & Availability</h2>
+	        <h2 class="form-title">Check Rates & Availability</h2>
         
-        <form action="">
+	        <form id="rates-form" action="/api/rates" method="post">
             <div class="form-group">
-                <label for="unitname">Hotel or Unit Name</label>
-                <input type="text" id="unitname" name="unitname" placeholder="e.g., Downtown Grand" required>
+                <label for="unitname">Unit Name</label>
+                <select id="unitname" name="unitname" required>
+                    <option value="">Select a unit...</option>
+                    <option value="Standard Room">Standard Room</option>
+                    <option value="Deluxe Room">Deluxe Room</option>
+                    <option value="Suite">Suite</option>
+                    <option value="Villa">Villa</option>
+                </select>
             </div>
 
             <div class="date-row">
@@ -211,15 +219,172 @@
             </div>
 
             <div class="form-group">
-                <label for="age1">Ages of Occupants</label>
-                <input type="number" id="age1" name="age1" placeholder="Age of guest 1" min="0" max="120" required>
+                <label>Ages of Occupants</label>
+                <div id="age-inputs">
+                    <input type="number" id="age1" name="age1" placeholder="Age of guest 1" min="0" max="120" required>
+                </div>
             </div>
 
-            <div class="button-group">
+	            <div class="button-group">
                 <input type="reset" value="Reset">
-                <input type="submit" value="🔍 Search Rates">
+	                <input type="submit" value="🔍 Search Rates">
             </div>
-        </form>
+	        </form>
     </div>
+
+	<script>
+	(function() {
+		const form = document.getElementById('rates-form');
+		const occupantsInput = document.getElementById('occupants');
+		const ageInputsContainer = document.getElementById('age-inputs');
+
+		// Create result display area
+		const resultDiv = document.createElement('div');
+		resultDiv.id = 'result';
+		resultDiv.style.cssText = `
+			margin-top: 30px;
+			padding: 20px;
+			border-radius: 8px;
+			background-color: #f8f9fa;
+			border: 2px solid #e1e8ed;
+			min-height: 100px;
+			display: none;
+		`;
+		form.parentNode.appendChild(resultDiv);
+
+		// Dynamic age inputs
+		function updateAgeInputs() {
+			const occupants = Number(occupantsInput.value) || 1;
+			ageInputsContainer.innerHTML = '';
+			
+			for (let i = 1; i <= occupants; i++) {
+				const input = document.createElement('input');
+				input.type = 'number';
+				input.id = `age${i}`;
+				input.name = `age${i}`;
+				input.placeholder = `Age of guest ${i}`;
+				input.min = '0';
+				input.max = '120';
+				input.required = true;
+				input.style.cssText = `
+					width: 100%;
+					padding: 15px;
+					border: 2px solid #e1e8ed;
+					border-radius: 8px;
+					font-size: 16px;
+					margin-bottom: 10px;
+					background-color: #f8f9fa;
+					transition: all 0.3s ease;
+				`;
+				
+				input.addEventListener('focus', function() {
+					this.style.borderColor = '#20B2AA';
+					this.style.backgroundColor = 'white';
+					this.style.boxShadow = '0 0 0 3px rgba(32, 178, 170, 0.1)';
+				});
+				
+				input.addEventListener('blur', function() {
+					this.style.borderColor = '#e1e8ed';
+					this.style.backgroundColor = '#f8f9fa';
+					this.style.boxShadow = 'none';
+				});
+				
+				ageInputsContainer.appendChild(input);
+			}
+		}
+
+		// Update age inputs when occupants change
+		occupantsInput.addEventListener('input', updateAgeInputs);
+
+		function toDdMmYyyy(yyyyMmDd) {
+			if (!yyyyMmDd) return '';
+			const [y, m, d] = yyyyMmDd.split('-');
+			return `${d}/${m}/${y}`;
+		}
+
+		function displayResult(data) {
+			resultDiv.style.display = 'block';
+			
+			if (data.success) {
+				resultDiv.style.backgroundColor = '#d4edda';
+				resultDiv.style.borderColor = '#c3e6cb';
+				resultDiv.innerHTML = `
+					<h3 style="color: #155724; margin-bottom: 15px;">✅ Rate Information Found</h3>
+					<div style="background: white; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+						<p><strong>Unit:</strong> ${data.data.unitName}</p>
+						<p><strong>Date Range:</strong> ${data.data.dateRange}</p>
+					</div>
+					<div style="background: white; padding: 15px; border-radius: 5px;">
+						<h4 style="color: #155724; margin-bottom: 10px;">Rate Details:</h4>
+						<pre style="background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; font-size: 12px;">${JSON.stringify(data.data.rates, null, 2)}</pre>
+					</div>
+				`;
+			} else {
+				resultDiv.style.backgroundColor = '#f8d7da';
+				resultDiv.style.borderColor = '#f5c6cb';
+				resultDiv.innerHTML = `
+					<h3 style="color: #721c24; margin-bottom: 15px;">❌ Error</h3>
+					<p style="color: #721c24;">${data.error || 'An unexpected error occurred'}</p>
+				`;
+			}
+		}
+
+		form.addEventListener('submit', async function(event) {
+			event.preventDefault();
+			
+			// Show loading state
+			resultDiv.style.display = 'block';
+			resultDiv.style.backgroundColor = '#d1ecf1';
+			resultDiv.style.borderColor = '#bee5eb';
+			resultDiv.innerHTML = '<h3 style="color: #0c5460;">🔄 Fetching rates...</h3><p style="color: #0c5460;">Please wait while we search for the best rates.</p>';
+			
+			const unitName = document.getElementById('unitname').value.trim();
+			const arrival = toDdMmYyyy(document.getElementById('arrival').value);
+			const departure = toDdMmYyyy(document.getElementById('departure').value);
+			const occupants = Number(document.getElementById('occupants').value || '1');
+			
+			// Collect all ages
+			const ages = [];
+			for (let i = 1; i <= occupants; i++) {
+				const ageInput = document.getElementById(`age${i}`);
+				if (ageInput) {
+					ages.push(Number(ageInput.value) || 0);
+				}
+			}
+
+			const payload = {
+				"Unit Name": unitName,
+				"Arrival": arrival,
+				"Departure": departure,
+				"Occupants": occupants,
+				"Ages": ages
+			};
+
+			try {
+				const response = await fetch('/api/rates', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(payload)
+				});
+				const text = await response.text();
+				try {
+					const json = JSON.parse(text);
+					displayResult(json);
+				} catch (_) {
+					resultDiv.style.backgroundColor = '#f8d7da';
+					resultDiv.style.borderColor = '#f5c6cb';
+					resultDiv.innerHTML = `<h3 style="color: #721c24;">❌ Error</h3><p style="color: #721c24;">Invalid response: ${text}</p>`;
+				}
+			} catch (err) {
+				resultDiv.style.backgroundColor = '#f8d7da';
+				resultDiv.style.borderColor = '#f5c6cb';
+				resultDiv.innerHTML = `<h3 style="color: #721c24;">❌ Network Error</h3><p style="color: #721c24;">${err && err.message ? err.message : String(err)}</p>`;
+			}
+		});
+
+		// Initialize age inputs
+		updateAgeInputs();
+	})();
+	</script>
 </body>
 </html>
